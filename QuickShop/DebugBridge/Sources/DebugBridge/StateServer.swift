@@ -194,8 +194,10 @@ public final class StateServer {
         }
 
         let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-        let image = renderer.image { ctx in
-            window.layer.render(in: ctx.cgContext)
+        let image = renderer.image { _ in
+            // drawHierarchy captures the actual rendered pixels including SwiftUI content.
+            // layer.render() only captures CALayer content and misses SwiftUI on newer iOS.
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
 
         guard let data = image.pngData() else { return "" }
