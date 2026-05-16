@@ -8,7 +8,7 @@ import DebugBridge
 final class DebugBridgeManager {
     static let shared = DebugBridgeManager()
 
-    private var server: MCPServer?
+    private var server: StateServer?
 
     private init() {}
 
@@ -22,34 +22,25 @@ final class DebugBridgeManager {
             return
         }
 
-        let server = MCPServer()
-        server.onConnect = {
-            DebugBridgeNotifier.connected()
-        }
-        server.onDisconnect = {
-            DebugBridgeNotifier.disconnected()
-        }
+        let server = StateServer()
 
-        ScreenCapture.registerTools(on: server)
-        TapInjector.registerTools(on: server)
-
-        CartViewModelAccessor.registerTools(on: server, instance: cartVM)
-        ProductViewModelAccessor.registerTools(on: server, instance: productVM)
-        ProfileViewModelAccessor.registerTools(on: server, instance: profileVM)
-        NavigationRouterAccessor.registerTools(on: server, instance: router)
+        CartViewModelAccessor.register(on: server, instance: cartVM)
+        ProductViewModelAccessor.register(on: server, instance: productVM)
+        ProfileViewModelAccessor.register(on: server, instance: profileVM)
+        NavigationRouterAccessor.register(on: server, instance: router)
 
         server.start()
         self.server = server
 
-        DebugBridgeNotifier.action("bridge started")
-        print("[iStack] Live-device DebugBridge started")
+        DebugBridgeNotifier.action("state server started")
+        print("[iStack] StateServer started on port 9999")
     }
 
     func stop() {
         server?.stop()
         server = nil
         DebugBridgeNotifier.disconnected()
-        print("[iStack] Live-device DebugBridge stopped")
+        print("[iStack] StateServer stopped")
     }
 }
 #endif
