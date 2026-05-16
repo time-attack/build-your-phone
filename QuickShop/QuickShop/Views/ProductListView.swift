@@ -1,7 +1,5 @@
 import SwiftUI
 
-private let accent = Color.green
-
 struct ProductListView: View {
     @Bindable var productVM: ProductViewModel
     var cartVM: CartViewModel
@@ -20,13 +18,21 @@ struct ProductListView: View {
             Button {
                 router.navigate(to: .productDetail(product))
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: 14) {
                     Image(systemName: product.sfSymbol)
-                        .font(.title2)
-                        .foregroundStyle(accent)
-                        .frame(width: 50, height: 50)
-                        .background(accent.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .font(.title3)
+                        .foregroundStyle(.white)
+                        .frame(width: 46, height: 46)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(red: 1.0, green: 0.4, blue: 0.2), Color(red: 1.0, green: 0.6, blue: 0.3)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
 
                     VStack(alignment: .leading, spacing: 4) {
                         // BUG #5: .fixedSize() prevents wrapping — long names push
@@ -36,13 +42,13 @@ struct ProductListView: View {
                             .foregroundStyle(.primary)
                             .fixedSize(horizontal: true, vertical: false)
                         Text(product.category.rawValue)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(accent.opacity(0.7))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
 
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill")
                                 .font(.caption2)
-                                .foregroundStyle(.yellow)
+                                .foregroundStyle(.orange)
                             Text("\(product.rating, specifier: "%.1f") (\(product.reviewCount))")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -51,19 +57,19 @@ struct ProductListView: View {
 
                     Spacer()
 
-                    VStack(alignment: .trailing, spacing: 4) {
+                    VStack(alignment: .trailing, spacing: 6) {
                         Text("$\(product.price, specifier: "%.2f")")
-                            .font(.body.weight(.semibold).monospaced())
+                            .font(.body.weight(.semibold))
 
                         Button {
                             cartVM.addToCart(product)
                         } label: {
                             Text("Add")
-                                .font(.caption.weight(.medium))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 4)
-                                .background(accent)
-                                .foregroundStyle(.black)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 5)
+                                .background(Color(red: 1.0, green: 0.4, blue: 0.2))
+                                .foregroundStyle(.white)
                                 .clipShape(Capsule())
                         }
                     }

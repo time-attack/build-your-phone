@@ -1,7 +1,5 @@
 import SwiftUI
 
-private let accent = Color.green
-
 struct HomeView: View {
     var productVM: ProductViewModel
     var cartVM: CartViewModel
@@ -9,55 +7,55 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                // Hero banner — terminal style
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.black)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .strokeBorder(accent.opacity(0.4), lineWidth: 1)
+            VStack(alignment: .leading, spacing: 28) {
+                // Hero
+                ZStack(alignment: .bottomLeading) {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(red: 1.0, green: 0.35, blue: 0.2), Color(red: 1.0, green: 0.55, blue: 0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                        .frame(height: 180)
+                        .frame(height: 190)
 
-                    VStack(spacing: 8) {
-                        Text("> QuickShop")
-                            .font(.title.bold().monospaced())
-                            .foregroundStyle(accent)
-                        Text("APIs. Compute. Models. Ship it.")
-                            .font(.subheadline.monospaced())
-                            .foregroundStyle(accent.opacity(0.7))
-                        Text("GStack x GBrain Hackathon")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.white.opacity(0.5))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("The developer\ninfrastructure store")
+                            .font(.title2.bold())
+                            .foregroundStyle(.white)
+                        Text("APIs, compute, and models — ready to deploy.")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.85))
                     }
+                    .padding(20)
                 }
                 .padding(.horizontal)
 
                 // Categories
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Browse")
-                        .font(.title2.bold())
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Categories")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
                         .padding(.horizontal)
 
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: 10) {
                             ForEach(productVM.categories, id: \.self) { category in
                                 Button {
                                     router.navigate(to: .productList(category))
                                 } label: {
-                                    VStack(spacing: 8) {
+                                    HStack(spacing: 6) {
                                         Image(systemName: iconFor(category))
-                                            .font(.title2)
-                                            .frame(width: 50, height: 50)
-                                            .background(accent.opacity(0.15))
-                                            .foregroundStyle(accent)
-                                            .clipShape(Circle())
+                                            .font(.subheadline)
                                         Text(category.rawValue)
-                                            .font(.caption.monospaced())
-                                            .foregroundStyle(.primary)
+                                            .font(.subheadline.weight(.medium))
                                     }
-                                    .frame(width: 80)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                    .background(.fill.tertiary)
+                                    .clipShape(Capsule())
+                                    .foregroundStyle(.primary)
                                 }
                             }
                         }
@@ -65,22 +63,22 @@ struct HomeView: View {
                     }
                 }
 
-                // Featured products
-                VStack(alignment: .leading, spacing: 12) {
+                // Featured
+                VStack(alignment: .leading, spacing: 14) {
                     HStack {
                         Text("Featured")
-                            .font(.title2.bold())
+                            .font(.title3.bold())
                         Spacer()
-                        Button("See All") {
+                        Button("View all") {
                             router.navigate(to: .productList(nil))
                         }
-                        .font(.subheadline)
-                        .foregroundStyle(accent)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color(red: 1.0, green: 0.4, blue: 0.2))
                     }
                     .padding(.horizontal)
 
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 16) {
+                        HStack(spacing: 14) {
                             ForEach(productVM.featuredProducts) { product in
                                 Button {
                                     router.navigate(to: .productDetail(product))
@@ -94,43 +92,61 @@ struct HomeView: View {
                     }
                 }
 
-                // Quick add section
-                VStack(alignment: .leading, spacing: 12) {
+                // Trending
+                VStack(alignment: .leading, spacing: 14) {
                     Text("Trending")
-                        .font(.title2.bold())
+                        .font(.title3.bold())
                         .padding(.horizontal)
 
-                    ForEach(Array(productVM.products.suffix(4))) { product in
-                        HStack(spacing: 12) {
-                            Image(systemName: product.sfSymbol)
-                                .font(.title3)
-                                .foregroundStyle(accent)
-                                .frame(width: 44, height: 44)
-                                .background(accent.opacity(0.1))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                    VStack(spacing: 0) {
+                        ForEach(Array(productVM.products.suffix(4).enumerated()), id: \.element.id) { index, product in
+                            HStack(spacing: 14) {
+                                Image(systemName: product.sfSymbol)
+                                    .font(.body)
+                                    .foregroundStyle(.white)
+                                    .frame(width: 40, height: 40)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: gradientFor(index),
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                    )
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                // BUG #5: .fixedSize() prevents text wrapping — long names
-                                // extend beyond the row and get clipped or overlap
-                                Text(product.name)
-                                    .font(.subheadline.weight(.medium))
-                                    .fixedSize(horizontal: true, vertical: false)
-                                Text("$\(product.price, specifier: "%.2f")")
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    // BUG #5: .fixedSize() prevents text wrapping — long names
+                                    // extend beyond the row and get clipped or overlap
+                                    Text(product.name)
+                                        .font(.subheadline.weight(.medium))
+                                        .fixedSize(horizontal: true, vertical: false)
+                                    Text("$\(product.price, specifier: "%.2f")")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Button {
+                                    cartVM.addToCart(product)
+                                } label: {
+                                    Image(systemName: "plus")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.white)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color(red: 1.0, green: 0.4, blue: 0.2))
+                                        .clipShape(Circle())
+                                }
                             }
+                            .padding(.horizontal)
+                            .padding(.vertical, 12)
 
-                            Spacer()
-
-                            Button {
-                                cartVM.addToCart(product)
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.title3)
-                                    .foregroundStyle(accent)
+                            if index < 3 {
+                                Divider().padding(.leading, 70)
                             }
                         }
-                        .padding(.horizontal)
                     }
                 }
             }
@@ -141,11 +157,21 @@ struct HomeView: View {
 
     private func iconFor(_ category: Product.Category) -> String {
         switch category {
-        case .apis: "icloud.fill"
+        case .apis: "cloud.fill"
         case .compute: "cpu.fill"
         case .models: "brain"
-        case .devtools: "hammer.fill"
+        case .devtools: "wrench.and.screwdriver.fill"
         }
+    }
+
+    private func gradientFor(_ index: Int) -> [Color] {
+        let palettes: [[Color]] = [
+            [Color(red: 0.4, green: 0.3, blue: 0.9), Color(red: 0.6, green: 0.4, blue: 1.0)],
+            [Color(red: 1.0, green: 0.4, blue: 0.2), Color(red: 1.0, green: 0.6, blue: 0.3)],
+            [Color(red: 0.2, green: 0.7, blue: 0.6), Color(red: 0.3, green: 0.8, blue: 0.7)],
+            [Color(red: 0.9, green: 0.3, blue: 0.5), Color(red: 1.0, green: 0.5, blue: 0.6)],
+        ]
+        return palettes[index % palettes.count]
     }
 }
 
@@ -153,37 +179,36 @@ struct ProductCardView: View {
     let product: Product
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             // BUG #3: URL(string:) without percent-encoding — URLs with spaces/special
             // chars return nil, so AsyncImage gets nil and shows the failure state
             AsyncImage(url: URL(string: product.imageURL)) { phase in
                 switch phase {
                 case .empty:
                     ProgressView()
-                        .tint(accent)
                 case .success(let image):
                     image.resizable().aspectRatio(contentMode: .fit)
                 case .failure:
                     Image(systemName: product.sfSymbol)
-                        .font(.largeTitle)
-                        .foregroundStyle(accent)
+                        .font(.title)
+                        .foregroundStyle(Color(red: 1.0, green: 0.4, blue: 0.2))
                 @unknown default:
                     EmptyView()
                 }
             }
-            .frame(width: 150, height: 120)
-            .background(accent.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .frame(width: 156, height: 110)
+            .background(.fill.tertiary)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
 
             // BUG #5: .fixedSize() prevents wrapping — long names push beyond card width
             Text(product.name)
-                .font(.caption.weight(.medium))
+                .font(.caption.weight(.semibold))
                 .fixedSize(horizontal: true, vertical: false)
-                .frame(width: 150, alignment: .leading)
+                .frame(width: 156, alignment: .leading)
                 .clipped()
 
             Text("$\(product.price, specifier: "%.2f")")
-                .font(.caption2.monospaced())
+                .font(.caption2)
                 .foregroundStyle(.secondary)
         }
     }

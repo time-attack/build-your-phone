@@ -1,7 +1,5 @@
 import SwiftUI
 
-private let accent = Color.green
-
 struct CheckoutView: View {
     var cartVM: CartViewModel
     var router: NavigationRouter
@@ -20,11 +18,19 @@ struct CheckoutView: View {
                 let primaryItem = cartVM.items.first!
                 HStack {
                     Image(systemName: primaryItem.product.sfSymbol)
-                        .font(.title3)
-                        .foregroundStyle(accent)
-                        .frame(width: 40, height: 40)
-                        .background(accent.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .font(.body)
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(red: 1.0, green: 0.4, blue: 0.2), Color(red: 1.0, green: 0.6, blue: 0.3)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
 
                     VStack(alignment: .leading) {
                         Text(primaryItem.product.name)
@@ -42,45 +48,42 @@ struct CheckoutView: View {
                         .font(.headline)
                     Spacer()
                     Text("$\(cartVM.total, specifier: "%.2f")")
-                        .font(.headline.weight(.bold).monospaced())
-                        .foregroundStyle(accent)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(Color(red: 1.0, green: 0.4, blue: 0.2))
                 }
             }
 
             Section("Provisioning") {
-                TextField("API Key Name", text: $apiKeyName)
+                TextField("API key name", text: $apiKeyName)
                     .textContentType(.name)
-                    .font(.body.monospaced())
                 TextField("Webhook URL (optional)", text: $webhookURL)
                     .textContentType(.URL)
                     .keyboardType(.URL)
-                    .font(.body.monospaced())
             }
 
             Section("Billing") {
                 TextField("Email", text: $billingEmail)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
-                    .font(.body.monospaced())
             }
 
             Section {
                 Button {
                     showConfirmation = true
                 } label: {
-                    HStack {
-                        Spacer()
-                        HStack(spacing: 8) {
-                            Image(systemName: "terminal")
-                            Text("Deploy")
-                        }
+                    Text("Place Order")
                         .font(.headline)
-                        Spacer()
-                    }
-                    .padding()
-                    .background(accent)
-                    .foregroundStyle(.black)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(red: 1.0, green: 0.35, blue: 0.2), Color(red: 1.0, green: 0.55, blue: 0.15)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .listRowInsets(EdgeInsets())
                 .padding()
@@ -88,13 +91,13 @@ struct CheckoutView: View {
         }
         .navigationTitle("Checkout")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Deployed!", isPresented: $showConfirmation) {
+        .alert("Order placed!", isPresented: $showConfirmation) {
             Button("OK") {
                 cartVM.clearCart()
                 router.popToRoot()
             }
         } message: {
-            Text("Your resources are provisioning. API keys will appear in your dashboard.")
+            Text("Your resources are provisioning. You'll receive API keys at your billing email.")
         }
     }
 }

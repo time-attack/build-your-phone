@@ -44,8 +44,7 @@ struct QuickShopApp: App {
                 }
                 .tag(NavigationRouter.Tab.profile)
             }
-            .tint(.green)
-            .preferredColorScheme(.dark)
+            .tint(Color(red: 1.0, green: 0.4, blue: 0.2))
             #if DEBUG
             .debugBridgeOverlay()
             .task {

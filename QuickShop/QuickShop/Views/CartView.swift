@@ -1,7 +1,5 @@
 import SwiftUI
 
-private let accent = Color.green
-
 struct CartView: View {
     var cartVM: CartViewModel
     var router: NavigationRouter
@@ -10,27 +8,35 @@ struct CartView: View {
         Group {
             if cartVM.isEmpty {
                 ContentUnavailableView(
-                    "Cart Empty",
+                    "Your cart is empty",
                     systemImage: "cart",
-                    description: Text("Add APIs, compute, or models to get started")
+                    description: Text("Browse APIs, compute, and models to get started.")
                 )
             } else {
                 List {
                     ForEach(cartVM.items) { item in
-                        HStack(spacing: 12) {
+                        HStack(spacing: 14) {
                             Image(systemName: item.product.sfSymbol)
-                                .font(.title3)
-                                .foregroundStyle(accent)
-                                .frame(width: 44, height: 44)
-                                .background(accent.opacity(0.1))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .font(.body)
+                                .foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [Color(red: 1.0, green: 0.4, blue: 0.2), Color(red: 1.0, green: 0.6, blue: 0.3)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                )
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(item.product.name)
                                     .font(.subheadline.weight(.medium))
                                     .lineLimit(2)
                                 Text("$\(item.product.price, specifier: "%.2f") / unit")
-                                    .font(.caption.monospaced())
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
 
@@ -41,20 +47,21 @@ struct CartView: View {
                                 Button {
                                     cartVM.updateQuantity(for: item, quantity: item.quantity - 1)
                                 } label: {
-                                    Image(systemName: "minus.circle")
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(.secondary)
                                 }
 
                                 Text("\(item.quantity)")
                                     .frame(minWidth: 20)
-                                    .font(.subheadline.weight(.medium).monospaced())
+                                    .font(.subheadline.weight(.semibold))
 
                                 Button {
                                     cartVM.updateQuantity(for: item, quantity: item.quantity + 1)
                                 } label: {
-                                    Image(systemName: "plus.circle")
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundStyle(Color(red: 1.0, green: 0.4, blue: 0.2))
                                 }
                             }
-                            .foregroundStyle(accent)
                         }
                         .padding(.vertical, 4)
                     }
@@ -71,22 +78,25 @@ struct CartView: View {
                             Spacer()
                             // BUG #1 surfaces here: total is stale after quantity changes
                             Text("$\(cartVM.total, specifier: "%.2f")")
-                                .font(.headline.monospaced())
+                                .font(.title3.weight(.bold))
                         }
 
                         Button {
                             router.navigate(to: .checkout)
                         } label: {
-                            HStack {
-                                Spacer()
-                                Text("Deploy Order")
-                                    .font(.headline)
-                                Spacer()
-                            }
-                            .padding()
-                            .background(accent)
-                            .foregroundStyle(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            Text("Continue to Checkout")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color(red: 1.0, green: 0.35, blue: 0.2), Color(red: 1.0, green: 0.55, blue: 0.15)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
                         .listRowInsets(EdgeInsets())
                         .padding()

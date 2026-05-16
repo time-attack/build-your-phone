@@ -1,7 +1,5 @@
 import SwiftUI
 
-private let accent = Color.green
-
 struct ProfileView: View {
     var profileVM: ProfileViewModel
     var router: NavigationRouter
@@ -10,40 +8,46 @@ struct ProfileView: View {
         Group {
             if profileVM.isLoggedIn, let user = profileVM.currentUser {
                 List {
-                    // User info header
+                    // User header
                     Section {
                         HStack(spacing: 16) {
-                            Image(systemName: user.avatarSymbol)
-                                .font(.system(size: 44))
-                                .foregroundStyle(accent)
+                            Text(String(user.name.prefix(1)).uppercased())
+                                .font(.title2.bold())
+                                .foregroundStyle(.white)
+                                .frame(width: 52, height: 52)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color(red: 1.0, green: 0.4, blue: 0.2), Color(red: 1.0, green: 0.6, blue: 0.3)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(user.name)
-                                    .font(.title3.bold().monospaced())
+                                    .font(.title3.bold())
                                 Text(user.email)
-                                    .font(.subheadline.monospaced())
+                                    .font(.subheadline)
                                     .foregroundStyle(.secondary)
-                                Text("Since \(user.memberSince, format: .dateTime.month(.abbreviated).year())")
+                                Text("Member since \(user.memberSince, format: .dateTime.month(.abbreviated).year())")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.tertiary)
                             }
                         }
                         .padding(.vertical, 8)
                     }
 
                     // Stats
-                    Section("Usage") {
+                    Section("Account") {
                         HStack {
-                            Label("Deployments", systemImage: "arrow.up.circle.fill")
-                                .foregroundStyle(accent)
+                            Label("Deployments", systemImage: "arrow.up.circle")
                             Spacer()
                             Text("\(user.orderCount)")
-                                .font(.body.monospaced())
                                 .foregroundStyle(.secondary)
                         }
                         HStack {
-                            Label("API Key", systemImage: "key.fill")
-                                .foregroundStyle(accent)
+                            Label("API Key", systemImage: "key")
                             Spacer()
                             Text("sk-\(user.id.uuidString.prefix(8).lowercased())")
                                 .font(.caption.monospaced())
@@ -51,18 +55,18 @@ struct ProfileView: View {
                         }
                     }
 
-                    // Order history
-                    Section("Recent Deployments") {
+                    // Orders
+                    Section("Recent Orders") {
                         if profileVM.orderHistory.isEmpty {
-                            Text("No deployments yet")
+                            Text("No orders yet")
                                 .foregroundStyle(.secondary)
                         } else {
                             ForEach(profileVM.orderHistory) { order in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text("deploy-\(order.id.uuidString.prefix(8).lowercased())")
-                                            .font(.subheadline.weight(.medium).monospaced())
-                                        Text(order.date, format: .dateTime.month().day().year())
+                                        Text("Order #\(order.id.uuidString.prefix(6).uppercased())")
+                                            .font(.subheadline.weight(.medium))
+                                        Text(order.date, format: .dateTime.month(.abbreviated).day().year())
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
@@ -71,12 +75,12 @@ struct ProfileView: View {
 
                                     VStack(alignment: .trailing, spacing: 4) {
                                         Text("$\(order.total, specifier: "%.2f")")
-                                            .font(.subheadline.weight(.medium).monospaced())
+                                            .font(.subheadline.weight(.medium))
                                         Text(order.status.rawValue)
-                                            .font(.caption.monospaced())
+                                            .font(.caption.weight(.medium))
                                             .padding(.horizontal, 8)
-                                            .padding(.vertical, 2)
-                                            .background(statusColor(order.status).opacity(0.15))
+                                            .padding(.vertical, 3)
+                                            .background(statusColor(order.status).opacity(0.12))
                                             .foregroundStyle(statusColor(order.status))
                                             .clipShape(Capsule())
                                     }
@@ -92,7 +96,7 @@ struct ProfileView: View {
                         } label: {
                             HStack {
                                 Spacer()
-                                Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
+                                Text("Sign Out")
                                 Spacer()
                             }
                         }
@@ -100,54 +104,67 @@ struct ProfileView: View {
                 }
                 .listStyle(.insetGrouped)
             } else {
-                // Login screen
-                VStack(spacing: 24) {
+                // Login
+                VStack(spacing: 28) {
                     Spacer()
 
-                    Image(systemName: "terminal")
-                        .font(.system(size: 60))
-                        .foregroundStyle(accent.opacity(0.6))
+                    // Logo
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 22)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(red: 1.0, green: 0.35, blue: 0.2), Color(red: 1.0, green: 0.55, blue: 0.1)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 80, height: 80)
+                        Image(systemName: "bag.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.white)
+                    }
 
-                    Text("> authenticate")
-                        .font(.title2.bold().monospaced())
-                        .foregroundStyle(accent)
-
-                    Text("Sign in to access your dev resources")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    VStack(spacing: 8) {
+                        Text("Sign in to QuickShop")
+                            .font(.title2.bold())
+                        Text("Access your deployments, API keys, and billing.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
 
                     VStack(spacing: 12) {
                         Button {
                             profileVM.login(as: SampleData.sampleUser)
                         } label: {
-                            HStack {
-                                Image(systemName: "terminal")
-                                Text("kai_dev")
-                                    .fontDesign(.monospaced)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(accent)
-                            .foregroundStyle(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            Text("Continue as kai_dev")
+                                .font(.body.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color(red: 1.0, green: 0.35, blue: 0.2), Color(red: 1.0, green: 0.55, blue: 0.15)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
 
                         Button {
                             profileVM.login(as: SampleData.secondUser)
                         } label: {
-                            HStack {
-                                Image(systemName: "terminal")
-                                Text("mx_runtime")
-                                    .fontDesign(.monospaced)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(accent.opacity(0.15))
-                            .foregroundStyle(accent)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            Text("Continue as mx_runtime")
+                                .font(.body.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(.fill.tertiary)
+                                .foregroundStyle(.primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
                     }
-                    .padding(.horizontal, 40)
+                    .padding(.horizontal, 32)
 
                     Spacer()
                 }
@@ -159,7 +176,7 @@ struct ProfileView: View {
     private func statusColor(_ status: Order.OrderStatus) -> Color {
         switch status {
         case .processing: .orange
-        case .shipped: .cyan
+        case .shipped: .blue
         case .delivered: .green
         }
     }

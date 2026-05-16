@@ -1,7 +1,5 @@
 import SwiftUI
 
-private let accent = Color.green
-
 struct ProductDetailView: View {
     let product: Product
     var cartVM: CartViewModel
@@ -11,77 +9,76 @@ struct ProductDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 24) {
                 // BUG #3: URL(string:) without percent-encoding — names with
                 // spaces/special chars produce nil URLs, AsyncImage shows failure
                 AsyncImage(url: URL(string: product.imageURL)) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()
-                            .tint(accent)
                     case .success(let image):
                         image.resizable().aspectRatio(contentMode: .fit)
                     case .failure:
                         Image(systemName: product.sfSymbol)
-                            .font(.system(size: 80))
-                            .foregroundStyle(accent)
+                            .font(.system(size: 64))
+                            .foregroundStyle(Color(red: 1.0, green: 0.4, blue: 0.2))
                     @unknown default:
                         EmptyView()
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 250)
-                .background(accent.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .frame(height: 220)
+                .background(.fill.tertiary)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
                 .padding(.horizontal)
 
-                VStack(alignment: .leading, spacing: 16) {
-                    // Product info
-                    VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Header
+                    VStack(alignment: .leading, spacing: 10) {
                         Text(product.name)
-                            .font(.title2.bold())
+                            .font(.title3.bold())
 
                         HStack {
                             Text("$\(product.price, specifier: "%.2f")")
-                                .font(.title3.weight(.semibold).monospaced())
-                                .foregroundStyle(accent)
+                                .font(.title2.weight(.bold))
+                                .foregroundStyle(Color(red: 1.0, green: 0.4, blue: 0.2))
 
                             Spacer()
 
                             HStack(spacing: 4) {
                                 Image(systemName: "star.fill")
-                                    .foregroundStyle(.yellow)
+                                    .foregroundStyle(.orange)
                                 Text("\(product.rating, specifier: "%.1f")")
                                     .font(.subheadline.weight(.medium))
-                                Text("(\(product.reviewCount) reviews)")
+                                Text("(\(product.reviewCount))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                         }
 
                         Text(product.category.rawValue)
-                            .font(.subheadline.monospaced())
+                            .font(.caption.weight(.medium))
                             .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(accent.opacity(0.15))
-                            .foregroundStyle(accent)
+                            .padding(.vertical, 5)
+                            .background(.fill.tertiary)
                             .clipShape(Capsule())
                     }
 
                     Divider()
 
-                    // Description
+                    // About
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Description")
+                        Text("About")
                             .font(.headline)
                         Text(product.description)
                             .font(.body)
                             .foregroundStyle(.secondary)
+                            .lineSpacing(2)
                     }
 
                     Divider()
 
-                    // Quantity selector
+                    // Quantity
                     HStack {
                         Text("Quantity")
                             .font(.headline)
@@ -92,42 +89,45 @@ struct ProductDetailView: View {
                             Button {
                                 if quantity > 1 { quantity -= 1 }
                             } label: {
-                                Image(systemName: "minus.circle")
+                                Image(systemName: "minus.circle.fill")
                                     .font(.title3)
-                                    .foregroundStyle(accent)
+                                    .foregroundStyle(.secondary)
                             }
 
                             Text("\(quantity)")
-                                .font(.title3.weight(.medium).monospaced())
-                                .frame(minWidth: 30)
+                                .font(.title3.weight(.semibold))
+                                .frame(minWidth: 28)
 
                             Button {
                                 quantity += 1
                             } label: {
-                                Image(systemName: "plus.circle")
+                                Image(systemName: "plus.circle.fill")
                                     .font(.title3)
-                                    .foregroundStyle(accent)
+                                    .foregroundStyle(Color(red: 1.0, green: 0.4, blue: 0.2))
                             }
                         }
                     }
 
-                    // Add to cart button
+                    // CTA
                     Button {
                         for _ in 0..<quantity {
                             cartVM.addToCart(product)
                         }
                         showAddedAlert = true
                     } label: {
-                        HStack {
-                            Image(systemName: "cart.badge.plus")
-                            Text("Add to Cart — $\(product.price * Double(quantity), specifier: "%.2f")")
-                        }
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(accent)
-                        .foregroundStyle(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        Text("Add to Cart — $\(product.price * Double(quantity), specifier: "%.2f")")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color(red: 1.0, green: 0.35, blue: 0.2), Color(red: 1.0, green: 0.55, blue: 0.15)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                 }
                 .padding(.horizontal)
