@@ -25,6 +25,92 @@ triggers:
 
 # iStack: Live-Device iOS QA (v4)
 
+## Warm Start (Check This FIRST — Before Any Other Phase)
+
+Before doing anything else, check if a session cache exists:
+
+```bash
+cat ~/.gstack/ios-qa-session.json 2>/dev/null
+```
+
+If the file exists and the session is less than 24 hours old:
+
+1. **Skip Phases 1 and 2 entirely** (no source reading, no code-gen, no build)
+2. Verify the device is still connected and the app is still running:
+   ```bash
+   CACHED_IP=$(cat ~/.gstack/ios-qa-session.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['tunnelIP'])")
+   curl -s -6 --max-time 3 "http://[$CACHED_IP]:9999/health"
+   ```
+3. If `/health` returns `{"status":"ok"}`:
+   - Print: `WARM START ✓ — Skipping code-gen and build. Using cached session.`
+   - Print the cached function inventory from `vmFunctions`
+   - Set `DEVICE="http://[$CACHED_IP]:9999"` and jump straight to **Phase 4**
+4. If health check fails (app not running or tunnel IP changed):
+   - Print: `WARM START: Cache stale — re-discovering device...`
+   - Re-run device discovery (Phase 3 only), then jump to Phase 4 (code-gen already done)
+   - Update `tunnelIP` in the cache file
+
+**Session cache format** (`~/.gstack/ios-qa-session.json`):
+```json
+{
+  "bundleId": "com.example.MyApp",
+  "tunnelIP": "fdac:e671:bcd7::1",
+  "deviceId": "E111536C-...",
+  "appSourceDir": "/path/to/App/",
+  "vmFunctions": {
+    "WorkoutViewModel": ["addWorkout(_:)", "removeWorkout(at:)", "toggleUnit()"],
+    "StatsViewModel": ["calculateStreak(from:)"]
+  },
+  "actionKeys": ["WorkoutVM_addWorkout", "WorkoutVM_removeWorkout", "ProfileVM_toggleUnit"],
+  "generatedAt": "2026-05-17T00:00:00Z"
+}
+```
+
+**Write the session cache** after a successful Phase 2 build (or after first successful
+`/health` response). Always overwrite — the newest successful session wins.
+
+```bash
+python3 -c "
+import json, datetime
+cache = {
+  'bundleId': 'BUNDLE_ID',
+  'tunnelIP': 'TUNNEL_IP',
+  'deviceId': 'DEVICE_ID',
+  'appSourceDir': 'APP_SOURCE_DIR',
+  'vmFunctions': VM_FUNCTIONS_DICT,
+  'actionKeys': ACTION_KEYS_LIST,
+  'generatedAt': datetime.datetime.utcnow().isoformat() + 'Z'
+}
+json.dump(cache, open('/Users/sinmat/.gstack/ios-qa-session.json', 'w'), indent=2)
+print('Session cached.')
+"
+```
+
+---
+
+## Rapid Mode
+
+If the user says "rapid", "fast", "quick test", "quick qa", or "speed run":
+
+**RAPID MODE** is active. This mode is optimized purely for speed.
+
+1. **Use Sonnet for ALL phases** — no Opus anywhere, even for test plan and report.
+2. **Batch everything.** Combine all state reads into single bash calls. Never make
+   a separate curl call for something you can read in the same script.
+3. **No narration.** Skip the "Tapping the + button..." text. Just act.
+4. **Minimal screenshots.** Take one screenshot per new screen only. Skip screenshots
+   for state-only tests (use `/state` reads exclusively). Still capture bug evidence.
+5. **No pauses.** Remove all `sleep` calls.
+6. **Blitz the test plan.** Run tests in parallel where possible — inject state for
+   multiple tests, then read all results in one batch.
+7. **Terse report.** Bug list only, no prose. One line per bug: `BUG: [what] [screen] [evidence]`
+
+**Rapid mode target:** Complete a full QA pass in under 90 seconds after warm start.
+
+Rapid mode is compatible with warm start — both can be active simultaneously.
+
+---
+
 You are an expert iOS QA tester. You connect to a real app running on a real
 iPhone via USB, read its source code, then run a browser-agent-loop to
 systematically find bugs: screenshot → identify elements → choose action →
