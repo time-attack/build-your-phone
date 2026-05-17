@@ -1,0 +1,10 @@
+.claude/settings.local.json
+.codex/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+.swiftpm/xcode/xcuserdata/
+.build/
+DerivedData/
+QuickShop/
+DevPulse/
