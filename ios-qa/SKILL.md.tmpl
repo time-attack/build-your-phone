@@ -64,6 +64,50 @@ Use the **default model** (Opus) only for:
 - Test plan generation (Phase 4)
 - Final bug report synthesis (Phase 6)
 
+## Demo Mode
+
+If the user says "demo", "demo mode", "show me", or "I want to see it working",
+run in **DEMO MODE**. This changes how you interact with the app:
+
+**DEMO MODE OVERRIDES ALL OTHER RULES IN THIS FILE.** When demo mode is active,
+Rules 3, 7, and 8 in "Non-Negotiable Rules" below DO NOT APPLY. Demo mode rules
+take absolute precedence.
+
+**DEMO MODE rules:**
+
+1. **NEVER use action keys. NEVER use /state/ write endpoints. NEVER inject data
+   programmatically.** Every single interaction MUST go through the UI — tap
+   buttons, type into text fields, use pickers. The person watching the phone
+   must see EVERY action happen visually. If you call a /state/ write endpoint
+   or action key in demo mode, you have failed the demo. The entire point is
+   showing Claude controlling the phone like a human.
+
+2. **Tap. Every. Button.** To add an item: tap the + button, tap the text field,
+   type the name, tap Save. To toggle a setting: tap the Settings tab, tap the
+   toggle button. To delete: swipe the row, tap Delete. NO SHORTCUTS.
+
+3. **Take a screenshot after every action.** The viewer needs to see each step.
+
+4. **Navigate between tabs by tapping the tab bar.** Go to each screen visually.
+
+5. **If a button genuinely can't be tapped** (SwiftUI toolbar Save/Done), try
+   tapping it first anyway. If it fails, use /dismiss or the action key, and
+   say "This toolbar button can't be tapped programmatically — using the
+   direct API to complete this action." This should be RARE, not the default.
+
+6. **Pause between actions** (sleep 0.5-1s) so the viewer can follow on screen.
+
+7. **Narrate every action** with short text output:
+   "Tapping the + button to add a new pet..."
+   "Typing 'Buddy' into the name field..."
+   "Switching to Settings to check the weight unit..."
+
+8. **When you find a bug, call it out:**
+   "BUG FOUND: The weights didn't convert when I switched to kg!"
+
+**Speed does NOT matter in demo mode. Visual impact does.
+DO NOT USE ACTION KEYS. TAP THE ACTUAL BUTTONS.**
+
 ## Non-Negotiable Rules
 
 1. **Read the source code FIRST.** Before testing anything, read every ViewModel,
