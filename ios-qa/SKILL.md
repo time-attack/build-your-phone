@@ -2,9 +2,10 @@
 name: ios-qa
 version: 4.0.0
 description: |
-  Live-device iOS QA for SwiftUI apps. Connects to a real iPhone via USB
-  port-forward, reads Swift source to understand every screen, then runs a
-  vision-driven agent loop: screenshot → analyze → decide → act → verify → repeat.
+  iOS QA for SwiftUI apps via real device (USB) or Simulator. Reads Swift
+  source to understand every screen, then runs a vision-driven agent loop:
+  screenshot → analyze → decide → act → verify → repeat. Automatically detects
+  whether to use a physical device or iOS Simulator based on what's available.
   All interaction happens via HTTP to an embedded StateServer in the app.
 allowed-tools:
   - Bash
@@ -19,13 +20,54 @@ triggers:
   - ios-qa
   - test ios app
   - qa my phone
+  - test ios simulator
+  - qa simulator
 ---
 
 {{PREAMBLE}}
 
-# iStack: Live-Device iOS QA (v4)
+# iStack: iOS QA (v4) — Device & Simulator
 
-## Warm Start (Check This FIRST — Before Any Other Phase)
+## Phase 0: Mode Detection (ALWAYS Run First)
+
+Before anything else, determine whether to use a real device or iOS Simulator.
+This decision affects every subsequent phase — URLs, flags, build destinations,
+screenshot methods, and session cache format.
+
+```bash
+# Auto-detect: real device vs simulator
+REAL_DEVICE=$(xcrun devicectl list devices 2>&1 | grep -i "connected" | head -1)
+
+if [ -n "$REAL_DEVICE" ]; then
+  echo "MODE: DEVICE — Real device detected."
+  echo "$REAL_DEVICE"
+  SIM_MODE=false
+else
+  echo "MODE: SIMULATOR — No real device connected. Using iOS Simulator."
+  SIM_MODE=true
+fi
+```
+
+**Override rules:**
+- If the user explicitly says "simulator", "sim", or "use simulator" → force `SIM_MODE=true`
+- If the user explicitly says "device", "phone", or "on my phone" → force `SIM_MODE=false` (error if none connected)
+- If neither is specified → auto-detect as above
+
+**Once mode is set, carry it through the entire session.** Every curl command,
+build destination, install/launch command, and screenshot method adapts to the mode.
+
+| Aspect | Device Mode | Simulator Mode |
+|--------|------------|----------------|
+| Interaction | StateServer HTTP (`curl`) | sim_tap + IDB native |
+| Taps | `curl POST /tap` (limited) | `sim_tap` (4ms AX) or `idb ui tap` (150ms HID) |
+| Elements | `curl GET /elements` | `idb ui describe-all` |
+| Screenshots | `curl GET /screenshot` (base64) | `xcrun simctl io booted screenshot` (raw PNG) |
+| Code-gen needed | Yes (Phases 1+2) | **No** — skip entirely |
+| Build destination | `id=<DEVICE_UUID>` | `platform=iOS Simulator,id=<SIM_UUID>` |
+| Install | `xcrun devicectl device install app` | `xcrun simctl install booted <app>` |
+| Launch | `xcrun devicectl device process launch` | `xcrun simctl launch booted <bundle-id>` |
+
+## Warm Start (Check This AFTER Mode Detection)
 
 Before doing anything else, check if a session cache exists:
 
@@ -38,17 +80,41 @@ If the file exists and the session is less than 24 hours old:
 1. **Skip Phases 1 and 2 entirely** (no source reading, no code-gen, no build)
 2. Verify the device is still connected and the app is still running:
    ```bash
-   CACHED_IP=$(cat ~/.gstack/ios-qa-session.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['tunnelIP'])")
-   curl -s -6 --max-time 3 "http://[$CACHED_IP]:9999/health"
+   CACHE=$(cat ~/.gstack/ios-qa-session.json)
+   CACHED_MODE=$(echo "$CACHE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('mode','device'))")
+
+   if [ "$CACHED_MODE" = "simulator" ]; then
+     # Simulator: verify IDB can see elements (no StateServer needed)
+     SIM_UDID=$(echo "$CACHE" | python3 -c "import sys,json; print(json.load(sys.stdin)['simUDID'])")
+     idb ui describe-all --udid "$SIM_UDID" --json 2>&1 | python3 -c "import sys,json; e=json.load(sys.stdin); print(f'OK: {len(e)} elements')"
+   else
+     # Device: verify StateServer health
+     CACHED_IP=$(echo "$CACHE" | python3 -c "import sys,json; print(json.load(sys.stdin)['tunnelIP'])")
+     curl -s -6 --max-time 3 "http://[$CACHED_IP]:9999/health"
+   fi
    ```
-3. If `/health` returns `{"status":"ok"}`:
+3. If verification succeeds:
    - Print: `WARM START ✓ — Skipping code-gen and build. Using cached session.`
-   - Print the cached function inventory from `vmFunctions`
-   - Set `DEVICE="http://[$CACHED_IP]:9999"` and jump straight to **Phase 4**
+   - For Device Mode: print the cached function inventory from `vmFunctions`
+   - For Simulator Mode: open Simulator.app GUI (`open -a Simulator`)
+   - Jump straight to **Phase 4**
 4. If health check fails (app not running or tunnel IP changed):
    - Print: `WARM START: Cache stale — re-discovering device...`
    - Re-run device discovery (Phase 3 only), then jump to Phase 4 (code-gen already done)
-   - Update `tunnelIP` in the cache file
+   - Update `tunnelIP` in the cache file:
+   ```bash
+   # Update the cached tunnel IP
+   python3 -c "
+   import json, os
+   cache_path = os.path.expanduser('~/.gstack/ios-qa-session.json')
+   cache = json.load(open(cache_path))
+   cache['tunnelIP'] = '$TUNNEL_IP'
+   import datetime
+   cache['generatedAt'] = datetime.datetime.utcnow().isoformat() + 'Z'
+   json.dump(cache, open(cache_path, 'w'), indent=2)
+   print('Cache updated: tunnel IP →', cache['tunnelIP'])
+   "
+   ```
 
 **Session cache format** (`~/.gstack/ios-qa-session.json`):
 ```json
@@ -81,7 +147,8 @@ cache = {
   'actionKeys': ACTION_KEYS_LIST,
   'generatedAt': datetime.datetime.utcnow().isoformat() + 'Z'
 }
-json.dump(cache, open('/Users/sinmat/.gstack/ios-qa-session.json', 'w'), indent=2)
+import os
+json.dump(cache, open(os.path.expanduser('~/.gstack/ios-qa-session.json'), 'w'), indent=2)
 print('Session cached.')
 "
 ```
@@ -105,22 +172,26 @@ If the user says "rapid", "fast", "quick test", "quick qa", or "speed run":
    multiple tests, then read all results in one batch.
 7. **Terse report.** Bug list only, no prose. One line per bug: `BUG: [what] [screen] [evidence]`
 
-**Rapid mode target:** Complete a full QA pass in under 90 seconds after warm start.
+**Rapid mode target:** Time expectations vary based on start type — warm starts skip code-gen and build, so QA execution is significantly faster. Cold starts include source analysis, code generation, and building, which add several minutes.
 
 Rapid mode is compatible with warm start — both can be active simultaneously.
 
 ---
 
-You are an expert iOS QA tester. You connect to a real app running on a real
-iPhone via USB, read its source code, then run a browser-agent-loop to
-systematically find bugs: screenshot → identify elements → choose action →
-execute → verify state → repeat.
+You are an expert iOS QA tester. You connect to an app running on a real iPhone
+(via USB) or in the iOS Simulator, read its source code, then run a
+browser-agent-loop to systematically find bugs: screenshot → identify elements
+→ choose action → execute → verify state → repeat.
 
 ## Architecture
 
 ```
 Claude Code (this skill — YOU)
-  └── curl -6 http://[TUNNEL_IPv6]:9999/*   (via CoreDevice USB tunnel)
+  │
+  ├── DEVICE MODE:  curl -6 http://[TUNNEL_IPv6]:9999/*  (CoreDevice USB tunnel)
+  │
+  └── SIM MODE:     curl http://localhost:9999/*          (direct localhost)
+        │
         ├── GET  /screenshot         → base64 PNG of current screen
         ├── GET  /elements           → accessibility tree (labels, frames, traits)
         ├── POST /tap                → inject tap at {x, y} pixel coords
@@ -134,9 +205,10 @@ Claude Code (this skill — YOU)
         └── GET  /health             → health check
 ```
 
-**No external tools needed** besides `curl` and `xcrun devicectl`.
+**No external tools needed** besides `curl` and `xcrun`.
 Everything runs inside the app via an embedded HTTP StateServer.
-Connection uses the CoreDevice USB tunnel (IPv6) — **NOT iproxy**.
+- **Device mode:** CoreDevice USB tunnel (IPv6) — **NOT iproxy**
+- **Simulator mode:** Localhost (no tunnel, no IPv6, instant and stable)
 
 ## Performance Model
 
@@ -301,7 +373,481 @@ If `/health` fails:
 - The tunnel IP changed → re-run step 2 to get the current tunnel IP
 - Kill any stale iproxy processes: `pkill -f iproxy` (they interfere)
 
-## API Reference
+## Simulator Mode — IDB Native Automation
+
+**In Simulator Mode, the embedded StateServer is NOT used.** Instead, all
+interactions go through Facebook's IDB (`idb`) and `xcrun simctl`, which inject
+real HID touch events and read the accessibility tree from the host Mac. This
+means:
+
+- **No DebugBridge code generation needed** — skip Phases 1+2 entirely
+- **No app rebuild needed** — any Debug build works (even Release, for taps/screenshots)
+- **Taps are real HID events** — visible on screen, trigger SwiftUI gesture handlers
+- **Accessibility tree is read externally** — no embedded server required
+- **No HTTP overhead** — direct IDB calls, ~150ms per operation
+
+### Simulator vs Device Architecture
+
+```
+DEVICE MODE (real phone):
+  Claude → curl -6 http://[IPv6]:9999/* → embedded StateServer in app
+  - Needs DebugBridge code-gen, build, deploy
+  - HTTP round-trip per action
+  - Can read @Observable state via /state/{key}
+
+SIMULATOR MODE (IDB):
+  Claude → idb ui tap/describe-all/text → native HID injection + accessibility
+  Claude → xcrun simctl io screenshot → direct screen capture
+  - NO code-gen, NO rebuild, NO embedded server
+  - Real touch events visible on screen
+  - Reads rendered UI state via accessibility tree (labels, values, frames)
+```
+
+| Aspect | Real Device | Simulator |
+|--------|------------|-----------|
+| Interaction | HTTP StateServer (`curl`) | sim_tap + IDB (`idb ui tap/text/swipe`) |
+| Elements | `curl /elements` | `idb ui describe-all` |
+| Screenshots | `curl /screenshot` (base64) | `xcrun simctl io booted screenshot` (raw PNG) |
+| State reads | `curl /state/{key}` (raw values) | Accessibility tree (rendered labels/values) |
+| State writes | `curl POST /state/{key}` (action keys) | IDB taps on real buttons |
+| Code-gen | Required (Phases 1+2) | NOT needed |
+| Build | Must include DebugBridge | Any Debug build works |
+| Taps visible | Via DebugOverlay ripple only | Real HID events on screen |
+
+### Prerequisites
+
+**IDB** must be installed. Check with:
+```bash
+which idb || echo "NOT INSTALLED"
+```
+
+If not installed:
+```bash
+brew install idb-companion
+pip3 install fb-idb
+```
+
+**sim_tap** (optional but recommended — 10x faster taps via macOS Accessibility API).
+Check if already compiled:
+```bash
+which sim_tap 2>/dev/null || ls ~/.local/bin/sim_tap 2>/dev/null || echo "NOT INSTALLED"
+```
+
+If not installed, compile from source (one-time setup, ~2 seconds):
+```bash
+mkdir -p ~/.local/bin
+cat > /tmp/sim_tap.swift << 'SWIFT_EOF'
+import Cocoa
+import ApplicationServices
+
+let args = CommandLine.arguments
+
+func usage() -> Never {
+    print("""
+    Usage:
+      sim_tap list                    - List all interactive elements
+      sim_tap tap <identifier>        - Tap element by accessibilityIdentifier
+      sim_tap tap-label <label>       - Tap element by description/label
+      sim_tap tap-coords <x> <y>     - Tap at screen coordinates (uses CGEvent)
+    """)
+    exit(1)
+}
+
+guard args.count >= 2 else { usage() }
+
+let startTime = CFAbsoluteTimeGetCurrent()
+
+let apps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.iphonesimulator")
+guard let simApp = apps.first else { print("Simulator not running"); exit(1) }
+
+let appElement = AXUIElementCreateApplication(simApp.processIdentifier)
+
+var windowsValue: CFTypeRef?
+guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsValue) == .success,
+      let windows = windowsValue as? [AXUIElement], let window = windows.first else {
+    print("No windows"); exit(1)
+}
+
+func collectElements(_ root: AXUIElement, maxDepth: Int = 10, depth: Int = 0) -> [(role: String, id: String, desc: String, el: AXUIElement)] {
+    if depth > maxDepth { return [] }
+    var results: [(role: String, id: String, desc: String, el: AXUIElement)] = []
+    var role: CFTypeRef?; var id: CFTypeRef?; var desc: CFTypeRef?
+    AXUIElementCopyAttributeValue(root, kAXRoleAttribute as CFString, &role)
+    AXUIElementCopyAttributeValue(root, kAXIdentifierAttribute as CFString, &id)
+    AXUIElementCopyAttributeValue(root, kAXDescriptionAttribute as CFString, &desc)
+    var actionsList: CFArray?
+    AXUIElementCopyActionNames(root, &actionsList)
+    let actions = actionsList as? [String] ?? []
+    let r = role as? String ?? ""
+    if actions.contains("AXPress") || r == "AXButton" || r == "AXPopUpButton" || r == "AXStaticText" {
+        results.append((r, id as? String ?? "", desc as? String ?? "", root))
+    }
+    var childrenValue: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(root, kAXChildrenAttribute as CFString, &childrenValue) == .success,
+          let children = childrenValue as? [AXUIElement] else { return results }
+    for child in children { results.append(contentsOf: collectElements(child, maxDepth: maxDepth, depth: depth + 1)) }
+    return results
+}
+
+func findElement(_ root: AXUIElement, identifier: String, maxDepth: Int = 10, depth: Int = 0) -> AXUIElement? {
+    if depth > maxDepth { return nil }
+    var idValue: CFTypeRef?
+    if AXUIElementCopyAttributeValue(root, kAXIdentifierAttribute as CFString, &idValue) == .success,
+       let id = idValue as? String, id == identifier { return root }
+    var childrenValue: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(root, kAXChildrenAttribute as CFString, &childrenValue) == .success,
+          let children = childrenValue as? [AXUIElement] else { return nil }
+    for child in children {
+        if let found = findElement(child, identifier: identifier, maxDepth: maxDepth, depth: depth + 1) { return found }
+    }
+    return nil
+}
+
+func findByLabel(_ root: AXUIElement, label: String, maxDepth: Int = 10, depth: Int = 0) -> AXUIElement? {
+    if depth > maxDepth { return nil }
+    var descValue: CFTypeRef?
+    if AXUIElementCopyAttributeValue(root, kAXDescriptionAttribute as CFString, &descValue) == .success,
+       let d = descValue as? String, d.lowercased().contains(label.lowercased()) { return root }
+    var titleValue: CFTypeRef?
+    if AXUIElementCopyAttributeValue(root, kAXTitleAttribute as CFString, &titleValue) == .success,
+       let t = titleValue as? String, t.lowercased().contains(label.lowercased()) { return root }
+    var childrenValue: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(root, kAXChildrenAttribute as CFString, &childrenValue) == .success,
+          let children = childrenValue as? [AXUIElement] else { return nil }
+    for child in children {
+        if let found = findByLabel(child, label: label, maxDepth: maxDepth, depth: depth + 1) { return found }
+    }
+    return nil
+}
+
+switch args[1] {
+case "list":
+    let elements = collectElements(window)
+    let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+    for e in elements {
+        print("[\(e.role)] id=\"\(e.id)\" desc=\"\(e.desc)\"")
+    }
+    print("\nFound \(elements.count) elements in \(String(format: "%.0f", elapsed * 1000))ms")
+
+case "tap":
+    guard args.count >= 3 else { usage() }
+    if let element = findElement(window, identifier: args[2]) {
+        let r = AXUIElementPerformAction(element, "AXPress" as CFString)
+        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+        print(r == .success ? "OK tapped '\(args[2])' in \(String(format: "%.0f", elapsed * 1000))ms" : "FAIL")
+    } else { print("NOT FOUND: '\(args[2])'"); exit(1) }
+
+case "tap-label":
+    guard args.count >= 3 else { usage() }
+    if let element = findByLabel(window, label: args[2]) {
+        let r = AXUIElementPerformAction(element, "AXPress" as CFString)
+        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+        print(r == .success ? "OK tapped '\(args[2])' in \(String(format: "%.0f", elapsed * 1000))ms" : "FAIL")
+    } else { print("NOT FOUND: '\(args[2])'"); exit(1) }
+
+case "tap-coords":
+    guard args.count >= 4, let x = Double(args[2]), let y = Double(args[3]) else { usage() }
+    let point = CGPoint(x: x, y: y)
+    let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left)
+    let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left)
+    down?.post(tap: .cghidEventTap)
+    usleep(50000)
+    up?.post(tap: .cghidEventTap)
+    let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+    print("Clicked at (\(x), \(y)) in \(String(format: "%.0f", elapsed * 1000))ms")
+
+default:
+    usage()
+}
+SWIFT_EOF
+swiftc -O -o ~/.local/bin/sim_tap /tmp/sim_tap.swift -framework Cocoa -framework ApplicationServices
+echo "sim_tap installed at ~/.local/bin/sim_tap"
+```
+
+Ensure `~/.local/bin` is on your PATH, or use the full path `~/.local/bin/sim_tap`.
+
+### Simulator Setup
+
+**IMPORTANT: Always open Simulator.app GUI** so the user can watch actions live.
+Every tap, swipe, and keyboard input is a real HID event visible on screen.
+
+```bash
+# Step 1: Open Simulator.app GUI FIRST (user watches actions live)
+open -a Simulator
+
+# Step 2: Find or boot a simulator
+BOOTED_SIM=$(xcrun simctl list devices booted | grep -E "\(Booted\)" | head -1)
+
+if [ -z "$BOOTED_SIM" ]; then
+  SIM_UDID=$(xcrun simctl list devices available | grep "iPhone" | head -1 | grep -oE '[A-F0-9-]{36}')
+  echo "Booting simulator $SIM_UDID..."
+  xcrun simctl boot "$SIM_UDID"
+  sleep 3
+else
+  SIM_UDID=$(echo "$BOOTED_SIM" | grep -oE '[A-F0-9-]{36}')
+  echo "Using already-booted simulator: $SIM_UDID"
+fi
+
+# Step 3: Build for simulator (standard Debug build — no DebugBridge needed)
+xcodebuild -project <project>.xcodeproj \
+  -scheme <scheme> \
+  -destination "platform=iOS Simulator,id=$SIM_UDID" \
+  -configuration Debug \
+  build 2>&1 | tail -5
+
+# Step 4: Find the built app
+APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -path "*/Debug-iphonesimulator/*" -newer /tmp/.ios-qa-build-marker 2>/dev/null | head -1)
+
+# Step 5: Install and launch
+xcrun simctl install "$SIM_UDID" "$APP_PATH"
+xcrun simctl launch "$SIM_UDID" <bundle-id>
+
+# Step 6: Verify IDB can see the app
+sleep 2
+idb ui describe-all --udid "$SIM_UDID" --json 2>&1 | python3 -c "import sys,json; elems=json.load(sys.stdin); print(f'IDB connected: {len(elems)} elements found')"
+```
+
+### Simulator API Reference (IDB + simctl)
+
+**These commands replace ALL StateServer curl calls in Simulator Mode.**
+
+#### Screenshot
+```bash
+mkdir -p /tmp/ios-qa
+xcrun simctl io booted screenshot /tmp/ios-qa/screen.png
+# Then: Read /tmp/ios-qa/screen.png
+```
+~200ms. Raw PNG file, no base64 decoding needed.
+
+#### Accessibility Elements (replaces GET /elements)
+```bash
+# Full tree — all elements with labels, IDs, frames, roles
+idb ui describe-all --udid "$SIM_UDID" --json
+
+# Element at a specific point (faster for targeted lookup)
+idb ui describe-point 200 450 --udid "$SIM_UDID" --json
+```
+~150-330ms. Returns AXLabel, AXUniqueId, AXFrame, role, enabled state.
+
+Each element has:
+- `AXLabel` — what you see on screen ("Roll opening dice", "Point 13, 5 your checkers")
+- `AXUniqueId` — stable identifier ("action-opening-roll", "point-13")
+- `frame` — `{"x", "y", "width", "height"}` in points
+- `role` — AXButton, AXStaticText, AXTextField, etc.
+- `enabled` — true if interactive
+- `AXValue` — current value (for text fields, sliders, etc.)
+
+#### Tap — Hybrid sim_tap + IDB (PREFERRED)
+
+Use `sim_tap` (macOS AX API) as the **preferred tap method** for simulator mode.
+4-10ms per tap vs 140-270ms for IDB. Falls back to IDB for swipe, text, and complex gestures.
+
+```bash
+# List all interactive elements (with identifiers and labels)
+sim_tap list
+
+# Tap by accessibilityIdentifier (fastest — 4-10ms)
+sim_tap tap <identifier>
+
+# Tap by label/description (case-insensitive substring match)
+sim_tap tap-label <label>
+
+# Tap at screen coordinates (uses CGEvent, ~50ms)
+sim_tap tap-coords <x> <y>
+```
+
+**Priority order for taps:**
+1. `sim_tap tap <identifier>` — fastest, most reliable (by AX identifier)
+2. `sim_tap tap-label <label>` — when identifier is unknown
+3. `sim_tap tap-coords <x> <y>` — coordinate-based fallback
+4. `idb ui tap <x> <y>` — fallback for when AX tap doesn't trigger the action
+
+**Use IDB instead of sim_tap for:** swipe, text input, long press, hardware buttons,
+and any gesture more complex than a single tap.
+
+#### Tap via IDB (fallback)
+```bash
+# Tap at coordinates (points, not pixels)
+idb ui tap 200 450 --udid "$SIM_UDID"
+
+# Long press
+idb ui tap 200 450 --duration 1.0 --udid "$SIM_UDID"
+```
+~150ms. This is a **real HID touch event** — the user sees it happen on screen,
+and it triggers SwiftUI gesture handlers, NavigationLinks, List row taps, and
+toolbar buttons that the HTTP StateServer tap handler CANNOT activate.
+
+#### Swipe (replaces POST /swipe)
+```bash
+# Swipe from (200,600) to (200,200)
+idb ui swipe 200 600 200 200 --udid "$SIM_UDID"
+
+# Slower swipe (for scroll detection)
+idb ui swipe 200 600 200 200 --duration 0.5 --udid "$SIM_UDID"
+```
+
+#### Type Text (replaces POST /type)
+```bash
+# Type into the currently focused text field
+idb ui text "hello@test.com" --udid "$SIM_UDID"
+
+# Individual key press
+idb ui key 40 --udid "$SIM_UDID"  # Return key
+```
+
+#### Hardware Buttons
+```bash
+idb ui button HOME --udid "$SIM_UDID"
+idb ui button LOCK --udid "$SIM_UDID"
+idb ui button SIRI --udid "$SIM_UDID"
+```
+
+#### Dismiss Alerts/Sheets
+In Simulator Mode, dismiss by tapping the button directly — IDB taps work on
+alert buttons, sheet dismiss buttons, and toolbar items (unlike the StateServer).
+```bash
+# Find the dismiss button
+idb ui describe-all --udid "$SIM_UDID" --json | python3 -c "
+import sys,json
+for e in json.load(sys.stdin):
+    if e.get('role')=='AXButton' and any(w in (e.get('AXLabel') or '').lower() for w in ['ok','cancel','dismiss','done','close']):
+        f=e['frame']; print(f\"{e['AXLabel']}: tap at {f['x']+f['width']/2:.0f} {f['y']+f['height']/2:.0f}\")
+"
+# Then tap the button
+idb ui tap <x> <y> --udid "$SIM_UDID"
+```
+
+#### Read App State
+IDB reads the **rendered** accessibility state, not raw @Observable values.
+This is usually sufficient — labels show computed values:
+
+```bash
+# Read all labels on screen (equivalent to state snapshot)
+idb ui describe-all --udid "$SIM_UDID" --json | python3 -c "
+import sys,json
+for e in json.load(sys.stdin):
+    label = e.get('AXLabel')
+    val = e.get('AXValue')
+    uid = e.get('AXUniqueId')
+    if label or val:
+        parts = [uid or '', label or '', val or '']
+        print(' | '.join(p for p in parts if p))
+"
+```
+
+For deeper state (UserDefaults, CoreData):
+```bash
+# Read UserDefaults plist from simulator filesystem
+APP_CONTAINER=$(xcrun simctl get_app_container "$SIM_UDID" <bundle-id> data)
+plutil -p "$APP_CONTAINER/Library/Preferences/<bundle-id>.plist"
+```
+
+### Simulator Agent Loop
+
+The loop is simpler in Simulator Mode — no HTTP, no state keys, just IDB + vision.
+
+```
+1. LOOK      → idb ui describe-all → understand what's on screen
+2. DECIDE    → Based on test plan + AXLabels + AXUniqueIds
+3. ACT       → idb ui tap/text/swipe (user sees it on screen)
+4. VERIFY    → idb ui describe-all → check labels changed as expected
+5. SCREENSHOT (when needed) → xcrun simctl io booted screenshot → visual check
+6. REPEAT
+```
+
+**Key difference from Device Mode:** In Simulator Mode, you CAN tap SwiftUI toolbar
+buttons, NavigationLinks, List cells, and sheet buttons — IDB sends real HID events
+that SwiftUI processes natively. The "use action keys instead of tapping" rule from
+Device Mode does NOT apply here. Tap everything directly.
+
+### Simulator Session Cache
+
+Simulator sessions skip code-gen, so the cache is simpler:
+
+```json
+{
+  "bundleId": "com.example.MyApp",
+  "simUDID": "9AF5F432-B4A2-4FC8-BC33-C992353965BB",
+  "appSourceDir": "/path/to/App/",
+  "mode": "simulator",
+  "generatedAt": "2026-05-20T00:00:00Z"
+}
+```
+
+No `tunnelIP`, no `vmFunctions`, no `actionKeys` — none needed.
+
+### Parallel Simulators
+
+Multiple simulators can run simultaneously, each targeted by UDID. This enables
+testing different features, screen sizes, or configurations at the same time.
+
+**When to use parallel simulators:**
+- **Multi-device regression** — same flow on iPhone SE, Pro, and Pro Max to catch
+  layout bugs across screen sizes
+- **Parallel feature testing** — test 3 independent features simultaneously
+- **Configuration matrix** — Easy/Medium/Hard difficulty, different locales, etc.
+
+```bash
+# Boot multiple simulators
+SIM_PRO="9AF5F432-..."
+SIM_MAX="2190BF39-..."
+SIM_SE="7D0C8DB1-..."
+
+xcrun simctl boot "$SIM_PRO"
+xcrun simctl boot "$SIM_MAX"
+xcrun simctl boot "$SIM_SE"
+open -a Simulator   # Shows all booted sims
+
+# Install on all
+for SIM in "$SIM_PRO" "$SIM_MAX" "$SIM_SE"; do
+  xcrun simctl install "$SIM" "$APP_PATH"
+  xcrun simctl launch "$SIM" "$BUNDLE_ID"
+done
+
+# Run actions in PARALLEL (each targets its own UDID)
+idb ui tap 200 450 --udid "$SIM_PRO" &
+idb ui tap 200 450 --udid "$SIM_MAX" &
+idb ui tap 200 450 --udid "$SIM_SE" &
+wait
+
+# Screenshot all three in parallel
+xcrun simctl io "$SIM_PRO" screenshot /tmp/ios-qa/pro.png &
+xcrun simctl io "$SIM_MAX" screenshot /tmp/ios-qa/max.png &
+xcrun simctl io "$SIM_SE" screenshot /tmp/ios-qa/se.png &
+wait
+```
+
+**Use Claude's parallel tool calls** to fire IDB commands and screenshots at
+multiple simulators simultaneously — each Bash call targets a different UDID.
+
+**Cleanup:** Shut down extra simulators when done to free resources:
+```bash
+xcrun simctl shutdown "$SIM_MAX"
+xcrun simctl shutdown "$SIM_SE"
+```
+
+### When to Use Simulator vs Real Device
+
+**Use Simulator when:**
+- No real device connected
+- Testing UI flows and state logic
+- Faster iteration (no provisioning, no DebugBridge code-gen, no tunnel instability)
+- Testing on multiple device sizes (create simulators for SE, Pro, Pro Max)
+- Running in CI/CD (no physical device available)
+- Demo mode (user watches every action happen on screen)
+
+**Use Real Device when:**
+- Testing hardware features (camera, sensors, haptics)
+- Need to read/write raw @Observable state via action keys
+- Performance/memory profiling
+- GameKit/Game Center integration
+- Push notification delivery edge cases
+- Final QA before release
+
+## API Reference — Device Mode (StateServer)
+
+**This section applies to DEVICE MODE only.** In Simulator Mode, use IDB commands
+instead (see "Simulator API Reference" above).
 
 **All curl commands must use `-6` and the `http://[TUNNEL_IP]:9999` format.**
 Set `DEVICE` variable first (from Setup step 3), then use `$DEVICE` everywhere.
@@ -710,7 +1256,8 @@ Do NOT screenshot between every action. Only screenshot when:
 - **Tap has no effect on toolbar/sheet button:** This is EXPECTED. SwiftUI toolbar buttons cannot be tapped programmatically. Use the action key instead. Do NOT try to fix the tap handler — it's a SwiftUI architectural limitation, not a bug in StateServer.
 - **"no focused text field" after tapping:** The StateServer tap handler uses becomeFirstResponder. If it fails, the view might be a SwiftUI TextField that hasn't propagated focus yet. Wait 500ms and try `/type` again. If still failing, verify the template's Priority 1 (UITextField) check is present.
 - **No elements returned:** The view might use custom drawing. Use screenshot + vision instead.
-- **"localhost" doesn't work:** Correct. Use `http://[TUNNEL_IPv6]:9999` with `-6` flag. Never use localhost.
+- **"localhost" doesn't work (Device Mode):** Correct for real devices. Use `http://[TUNNEL_IPv6]:9999` with `-6` flag.
+- **"localhost" works but no GUI visible (Simulator Mode):** Run `open -a Simulator` to show the Simulator.app window. The app is running but the GUI wasn't opened.
 
 ## Known Tap Limitations (DO NOT TRY TO FIX — use action keys)
 

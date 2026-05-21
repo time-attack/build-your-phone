@@ -53,6 +53,27 @@ This removes:
 rm -rf DebugBridge/
 ```
 
+## Step 3b: Remove DebugBridge file references from .pbxproj
+
+If DebugBridge files were added to the Xcode project (not just on disk), their
+references will remain in the `.pbxproj` and cause build errors. Check and clean:
+
+```bash
+# Check for DebugBridge references in the project file
+grep -n "DebugBridge" <project>.xcodeproj/project.pbxproj
+```
+
+If references are found:
+1. **Preferred:** Open the project in Xcode and remove the stale file references
+   from the navigator (they will show in red since the files are already deleted).
+2. **Automated:** Remove the lines from the `.pbxproj` directly:
+   ```bash
+   # Remove lines referencing DebugBridge from the project file
+   sed -i '' '/DebugBridge/d' <project>.xcodeproj/project.pbxproj
+   ```
+   After automated removal, verify the `.pbxproj` is still valid by running a
+   build (Step 5).
+
 ## Step 4: Remove references from app code
 
 Search for and remove all DebugBridge wiring in the app's source files:
